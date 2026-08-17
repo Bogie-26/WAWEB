@@ -1,0 +1,96 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Aplikasi client yang berlangganan layanan WA Service
+model Application {
+  id            String              @id @default(uuid())
+  name          String
+  tokenHash     String              @unique
+  webhookUrl    String?
+  enabled       Boolean             @default(true)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  subscriptions Subscription[]
+  deliveries    EventDelivery[]
+  cursor        ApplicationCursor?
+}
+
+// Subscription grup per aplikasi — keputusan ada di aplikasi client
+model Subscription {
+  id            String      @id @default(uuid())
+  applicationId String
+  groupJid      String
+  groupName     String
+  enabled       Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@unique([applicationId, groupJid])
+  @@index([groupJid])
+}
+
+// Grup WhatsApp hasil discovery/sync dari client
+model WhatsappGroup {
+  jid        String   @id
+  name       String
+  lastSeenAt DateTime @default(now())
+}
+
+// Event pesan — seq adalah global high-water mark (recovery cursor)
+model MessageEvent {
+  id         String          @id @default(uuid())
+  seq        BigInt          @unique @default(autoincrement())
+  groupJid   String
+  groupName  String
+  senderId   String
+  senderName String?
+  body       String?
+  hasMedia   Boolean         @default(false)
+  timestamp  DateTime
+  createdAt  DateTime        @default(now())
+  deliveries EventDelivery[]
+
+  @@index([seq])
+}
+
+// State delivery webhook per event per aplikasi
+model EventDelivery {
+  id            String        @id @default(uuid())
+  eventId       String
+  applicationId String
+  status        String        @default("PENDING") // PENDING | SENT | DELIVERED | FAILED
+  attempts      Int           @default(0)
+  nextRetryAt   DateTime?
+  lastError     String?
+  deliveredAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  event         MessageEvent  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  application   Application   @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, applicationId])
+  @@index([status, nextRetryAt])
+  @@index([applicationId, status])
+}
+
+// Cursor per aplikasi (informasi retention; cursor otoritatif di subscriber)
+model ApplicationCursor {
+  applicationId String      @id
+  lastSeq       BigInt      @default(0)
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+}
+
+// Config service (status WA, QR, last connected, dsb)
+model ServiceConfig {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

@@ -1,0 +1,13 @@
+node_modules/
+dist/
+web/dist/
+web/node_modules/
+.wwebjs_auth/
+.wwebjs_cache/
+.agents/
+.env
+.env.local
+*.log
+*.deb
+graphify-out/
+.DS_Store

@@ -1,0 +1,46 @@
+name: wa-service
+
+services:
+  wa-service-db:
+    image: postgres:15-alpine
+    container_name: wa_service_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-wa_service}
+      POSTGRES_USER: ${POSTGRES_USER:-wa_service}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD di .env}
+    volumes:
+      - wa_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wa_service} -d ${POSTGRES_DB:-wa_service}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    # PostgreSQL production: TIDAK public, tanpa host port mapping.
+    # Hanya dapat diakses dari container lain di network ini.
+
+  wa-service-web:
+    build: .
+    container_name: wa_service_web
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3006}:3006"
+    environment:
+      PORT: 3006
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL di .env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET di .env}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:?set ADMIN_PASSWORD_HASH di .env}
+      WEBHOOK_ALLOW_PRIVATE_IP: ${WEBHOOK_ALLOW_PRIVATE_IP:-false}
+      WEBHOOK_TIMEOUT_MS: ${WEBHOOK_TIMEOUT_MS:-10000}
+      EVENT_RETENTION_HOURS: ${EVENT_RETENTION_HOURS:-72}
+      CHROME_BIN: /usr/bin/chromium
+    depends_on:
+      wa-service-db:
+        condition: service_healthy
+    volumes:
+      - wa_session:/app/.wwebjs_auth
+
+volumes:
+  wa_db_data:
+  wa_session:
