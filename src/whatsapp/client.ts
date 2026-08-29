@@ -225,3 +225,77 @@ export async function sendWhatsappMessage(jid: string, message: string): Promise
     return false;
   }
 }
+
+export async function downloadMediaCustom(client: any, messageId: string): Promise<any> {
+  const parts = messageId.split('_');
+  const uniqueId = parts[2] || messageId;
+
+  return await client.pupPage.evaluate(async (msgId: string, uniqId: string) => {
+    // 1. Try to find in model cache by unique ID
+    let msg = (window as any).require('WAWebCollections').Msg.getModelsArray().find(
+      (m: any) => m.id && (m.id.id === uniqId || m.id._serialized === msgId)
+    );
+
+    // 2. Try to get it by ID
+    if (!msg) {
+      try {
+        msg = (window as any).require('WAWebCollections').Msg.get(msgId);
+      } catch (e) {}
+    }
+
+    // 3. Try to get from database/server (with try-catch to prevent DataError crash)
+    if (!msg) {
+      try {
+        const res = await (window as any).require('WAWebCollections').Msg.getMessagesById([msgId]);
+        if (res && res.messages && res.messages.length) {
+          msg = res.messages[0];
+        }
+      } catch (e) {}
+    }
+
+    if (!msg || !msg.mediaData) {
+      return null;
+    }
+
+    if (msg.mediaData.mediaStage !== 'RESOLVED' && msg.mediaData.mediaStage !== 'REUPLOADING') {
+      try {
+        await msg.downloadMedia({
+          downloadEvenIfExpensive: true,
+          rmrReason: 1,
+        });
+      } catch (e) {}
+    }
+
+    if (msg.mediaData.mediaStage.includes('ERROR') || msg.mediaData.mediaStage === 'FETCHING') {
+      return null;
+    }
+
+    try {
+      const mockQpl = {
+        addAnnotations: function () { return this; },
+        addPoint: function () { return this; },
+      };
+      const decryptedMedia = await (window as any)
+        .require('WAWebDownloadManager')
+        .downloadManager.downloadAndMaybeDecrypt({
+          directPath: msg.directPath,
+          encFilehash: msg.encFilehash,
+          filehash: msg.filehash,
+          mediaKey: msg.mediaKey,
+          mediaKeyTimestamp: msg.mediaKeyTimestamp,
+          type: msg.type,
+          signal: new AbortController().signal,
+          downloadQpl: mockQpl,
+        });
+
+      const data = await (window as any).WWebJS.arrayBufferToBase64Async(decryptedMedia);
+      return {
+        data,
+        mimetype: msg.mimetype,
+        filename: msg.filename || null,
+      };
+    } catch (e) {
+      return null;
+    }
+  }, messageId, uniqueId);
+}

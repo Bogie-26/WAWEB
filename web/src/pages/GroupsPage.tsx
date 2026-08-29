@@ -29,7 +29,7 @@ export default function GroupsPage() {
     setBusy(true);
     setNotice('');
     try {
-      const r = await api<{ synced: number }>('/api/status/groups/refresh', { method: 'POST' });
+      const r = await api<{ synced: number }>('/api/groups/refresh', { method: 'POST' });
       setNotice(`Sinkronisasi selesai: ${r.synced} grup dari client.`);
       load();
     } catch (e: any) {

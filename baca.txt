@@ -1,0 +1,556 @@
+DEPLOY WAWEB KE VPS — EXECUTE NOW
+
+TARGET VPS:
+Host: 187.127.98.175
+SSH Port: 22022
+User: root
+
+REPOSITORY:
+https://github.com/Bogie-26/WAWEB.git
+
+BRANCH:
+develop
+
+EXACT COMMIT:
+314dcf0 feat: initial wa service implementation
+
+TARGET PORT:
+3006
+
+==================================================
+ATURAN KERAS
+==================================================
+
+Deploy HANYA WAWEB / WA Service.
+
+JANGAN menyentuh aplikasi existing berikut:
+
+- pln_luwuk_web :3005
+- pohon3-app :3000
+- smart_expense_* :3001 / 5003
+- cx100luwuk_monitor :5002
+
+JANGAN:
+- restart VPS
+- restart container existing
+- docker system prune
+- docker volume prune
+- docker compose down -v
+- menghapus volume existing
+- menghapus image existing
+- mengubah reverse proxy existing
+- mengubah firewall
+- mengubah sshd
+- deploy PLTD
+- commit
+- push
+- merge
+- force push
+
+Jika ada risiko terhadap aplikasi existing:
+STOP dan laporkan.
+
+==================================================
+1. CONNECT & INSPECT
+==================================================
+
+Gunakan SSH:
+
+ssh -p 22022 root@187.127.98.175
+
+Periksa:
+
+hostname
+docker ps
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+ss -lntp
+df -h
+free -h
+
+Pastikan port 3006 masih bebas.
+
+Jangan menghentikan apa pun.
+
+==================================================
+2. PREPARE WAWEB DIRECTORY
+==================================================
+
+Gunakan directory:
+
+/opt/wawweb
+
+Jika belum ada:
+
+mkdir -p /opt/wawweb
+
+Jika sudah ada:
+JANGAN hapus.
+
+Periksa apakah directory tersebut merupakan clone WAWEB.
+
+==================================================
+3. CLONE / FETCH
+==================================================
+
+Repository public:
+
+https://github.com/Bogie-26/WAWEB.git
+
+Jika belum ada repository:
+
+git clone https://github.com/Bogie-26/WAWEB.git /opt/wawweb
+
+Jika sudah ada:
+
+cd /opt/wawweb
+git remote -v
+git fetch origin
+
+Pastikan origin:
+
+https://github.com/Bogie-26/WAWEB.git
+
+JANGAN mengubah remote jika berbeda tanpa STOP.
+
+==================================================
+4. CHECKOUT EXACT COMMIT
+==================================================
+
+cd /opt/wawweb
+
+git checkout develop
+git fetch origin
+git checkout 314dcf0
+
+Verifikasi:
+
+git rev-parse HEAD
+git log -1 --oneline
+git status
+
+Expected:
+
+314dcf0 feat: initial wa service implementation
+
+Jika HEAD bukan 314dcf0:
+STOP.
+
+Jangan melakukan git reset --hard terhadap perubahan existing
+tanpa approval.
+
+==================================================
+5. REVIEW COMPOSE
+==================================================
+
+Sebelum menjalankan Docker, baca:
+
+docker-compose.yml
+atau
+compose.yaml
+
+Identifikasi:
+
+- service names
+- ports
+- volumes
+- networks
+- database
+- environment
+- dependencies
+
+Pastikan WAWEB menggunakan resource terisolasi.
+
+Database WAWEB harus menggunakan database/volume sendiri.
+
+Jangan menggunakan PostgreSQL container aplikasi lain.
+
+==================================================
+6. ENVIRONMENT
+==================================================
+
+Periksa:
+
+.env
+.env.example
+
+Jika .env belum ada:
+
+buat .env production secara aman.
+
+JANGAN mengambil .env dari komputer lokal.
+
+JANGAN commit .env.
+
+Gunakan production secret yang sesuai.
+
+Minimal verifikasi:
+
+DATABASE_URL
+PORT=3006
+JWT_SECRET
+ADMIN credentials
+EVENT_RETENTION_HOURS
+WEBHOOK_ALLOW_PRIVATE_IP
+
+Jangan tampilkan nilai secret pada report.
+
+Jika ada credential/secret yang belum diketahui:
+STOP dan minta saya mengisinya.
+
+==================================================
+7. DOCKER BUILD
+==================================================
+
+Di:
+
+/opt/wawweb
+
+jalankan:
+
+docker compose build
+
+Jika build gagal:
+STOP.
+
+Jangan mengubah source/Dockerfile sebagai workaround.
+
+==================================================
+8. START DATABASE
+==================================================
+
+Start database WAWEB sesuai compose.
+
+Jangan restart container aplikasi lain.
+
+Gunakan:
+
+docker compose up -d <database-service>
+
+Kemudian:
+
+docker compose ps
+
+Pastikan database:
+
+healthy
+
+Periksa log database.
+
+==================================================
+9. PRISMA MIGRATION
+==================================================
+
+Jalankan migration sesuai entrypoint/compose WAWEB.
+
+Pastikan:
+
+0001_init
+
+berhasil.
+
+Expected:
+
+No pending migrations
+atau migration successfully applied.
+
+Jika migration gagal:
+STOP.
+
+JANGAN:
+
+docker compose down -v
+docker volume rm
+menghapus database
+
+==================================================
+10. START WAWEB
+==================================================
+
+Start hanya service WAWEB:
+
+docker compose up -d <web-service>
+
+Kemudian:
+
+docker compose ps
+
+Expected:
+
+DB = healthy
+WAWEB = Up
+
+Jika crash-loop:
+STOP.
+
+==================================================
+11. HTTP VERIFICATION
+==================================================
+
+Verifikasi port:
+
+ss -lntp | grep 3006
+
+Kemudian test:
+
+GET http://127.0.0.1:3006/api/health
+
+Expected:
+
+status = ok
+db = true
+
+Kemudian verifikasi:
+
+GET /api/status
+
+Jika endpoint membutuhkan admin authentication,
+gunakan authentication yang sudah dikonfigurasi.
+
+Jangan menonaktifkan authentication.
+
+==================================================
+12. LOG VERIFICATION
+==================================================
+
+Periksa:
+
+docker compose logs --tail=200 <web-service>
+
+Cari:
+
+[DB] Connected
+[WA] Starting WhatsApp Client
+[BOOT] WA Service started
+[HTTP] WA Service listening on port 3006
+
+Tidak boleh ada:
+
+uncaught exception
+crash
+restart loop
+Prisma engine error
+database connection error
+
+==================================================
+13. EXISTING APPLICATION REGRESSION
+==================================================
+
+Pastikan container existing tetap running:
+
+pln_luwuk_web
+pohon3-app
+smart_expense_*
+cx100luwuk_monitor
+
+Jangan restart mereka.
+
+Verifikasi port mereka tetap listening.
+
+Jika ada perubahan status:
+STOP dan laporkan.
+
+==================================================
+14. RESOURCE CHECK
+==================================================
+
+Setelah WAWEB running, catat:
+
+CPU VPS
+RAM VPS
+WAWEB CPU
+WAWEB RAM
+PostgreSQL WAWEB CPU/RAM
+
+Jangan menilai resource hanya saat Docker startup.
+
+Tunggu sampai service steady-state.
+
+==================================================
+15. ADMIN WEB
+==================================================
+
+Jika HTTP health PASS, akses Admin Web WAWEB.
+
+Pastikan:
+
+- halaman admin tersedia
+- login admin tersedia
+- status WhatsApp tersedia
+
+Expected WhatsApp:
+
+QR_READY
+
+Jika QR_READY:
+
+STOP.
+
+Jangan melakukan pairing otomatis.
+
+Tunggu instruksi user untuk scan QR.
+
+==================================================
+16. SESSION / WHATSAPP
+==================================================
+
+JANGAN lanjut scan QR sebelum semua tahap sebelumnya PASS.
+
+Setelah user mengonfirmasi scan QR:
+
+verifikasi:
+
+CONNECTED
+
+Kemudian verifikasi:
+
+- session tersimpan di Docker volume
+- tidak ada authentication error
+- tidak ada reconnect loop
+
+==================================================
+17. GROUP SYNC
+==================================================
+
+Setelah CONNECTED:
+
+tunggu synchronization selesai.
+
+Periksa:
+
+GET /api/groups
+
+Validasi:
+
+- JID @g.us
+- nama tidak kosong
+- tidak ada duplicate JID
+
+Catat jumlah group.
+
+Jangan menganggap jumlah group tertentu sebagai expected value.
+
+==================================================
+18. SESSION PERSISTENCE TEST
+==================================================
+
+Setelah CONNECTED dan sync selesai:
+
+restart HANYA container WAWEB.
+
+JANGAN restart database jika tidak diperlukan.
+
+Expected:
+
+container kembali Up
+WhatsApp kembali CONNECTED
+QR tidak muncul kembali
+
+Jika QR muncul:
+STOP.
+
+==================================================
+19. OUTGOING TEST
+==================================================
+
+JANGAN mengirim ke grup production tanpa izin.
+
+Gunakan grup test yang aman.
+
+Test:
+
+WA_SERVICE_VPS_TEST_001
+
+Verifikasi pesan benar-benar masuk.
+
+==================================================
+20. INCOMING TEST
+==================================================
+
+Gunakan grup test.
+
+Kirim:
+
+WA_SERVICE_VPS_INCOMING_TEST_001
+
+Verifikasi:
+
+WhatsApp
+→ message_create
+→ MessageEvent
+→ subscription matching
+→ EventDelivery
+
+Pada tahap ini BELUM menghubungkan PLTD.
+
+==================================================
+21. STOP POINT
+==================================================
+
+Setelah WAWEB:
+
+- build PASS
+- DB PASS
+- migration PASS
+- HTTP PASS
+- CONNECTED PASS
+- session persistence PASS
+- group sync PASS
+- outgoing PASS
+- incoming PASS
+
+STOP.
+
+Jangan:
+
+- membuat Application PLTD
+- memasukkan webhook PLTD
+- mengubah PLTD
+- deploy PLTD
+- mengubah reverse proxy
+
+Tahap tersebut dilakukan setelah WAWEB dinyatakan sehat.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Berikan:
+
+A. VPS status
+B. Existing containers
+C. Port 3006
+D. Repository
+E. Exact commit
+F. Docker build
+G. DB health
+H. Prisma migration
+I. HTTP health
+J. WAWEB status
+K. WhatsApp status
+L. Group count
+M. Session persistence
+N. Outgoing test
+O. Incoming test
+P. Resource usage
+Q. Existing application regression
+R. Final git status
+
+Gunakan:
+
+PASS
+FAIL
+NOT TESTED
+
+PENTING:
+
+Exact deployed commit harus:
+
+314dcf0
+
+Repository:
+
+https://github.com/Bogie-26/WAWEB.git
+
+STOP setelah deployment WAWEB selesai.
+
+JANGAN deploy PLTD.

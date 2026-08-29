@@ -1,7 +1,9 @@
 import { Router } from 'express';
+import fs from 'fs';
+import path from 'path';
 import { requireApplication, asyncHandler, httpError, AuthenticatedRequest } from '../lib/auth.js';
 import { prisma } from '../lib/db.js';
-import { getBotState } from '../whatsapp/client.js';
+import { getBotState, getClientInstance, downloadMediaCustom } from '../whatsapp/client.js';
 import { getUptimeSeconds } from '../services/settings.js';
 
 export const clientRouter = Router();
@@ -107,5 +109,47 @@ clientRouter.put(
     }
 
     res.json({ ok: true, synced, disabled });
+  })
+);
+
+/** Download media/attachment by WhatsApp message ID. */
+clientRouter.get(
+  '/messages/:messageId/media',
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { messageId } = req.params;
+
+    // Check local cache first
+    const cachePath = path.join('/app/media-cache', `${messageId}.json`);
+    if (fs.existsSync(cachePath)) {
+      try {
+        const cachedData = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+        console.log(`[WA-MEDIA] Serving media from local cache for ${messageId}`);
+        res.json(cachedData);
+        return;
+      } catch (e: any) {
+        console.error(`[WA-MEDIA] Error reading cached media for ${messageId}:`, e.message);
+      }
+    }
+
+    const client = getClientInstance();
+    if (!client || getBotState().status !== 'CONNECTED') {
+      res.status(503).json({ error: 'WhatsApp belum terhubung' });
+      return;
+    }
+    try {
+      const media = await downloadMediaCustom(client, messageId);
+      if (!media) {
+        res.status(404).json({ error: 'Media tidak ditemukan atau gagal didownload' });
+        return;
+      }
+      res.json({
+        mimetype: media.mimetype,
+        data: media.data, // base64 string
+        filename: media.filename || null,
+      });
+    } catch (err: any) {
+      console.error(`[WA-MEDIA] Gagal mengambil media untuk ${messageId}:`, err.message);
+      res.status(500).json({ error: err.message });
+    }
   })
 );

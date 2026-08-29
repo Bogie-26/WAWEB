@@ -4,9 +4,10 @@ Project: **WA Service** — satu layanan WhatsApp terpusat berbasis `whatsapp-we
 
 Referensi: project existing `rownewgit/pln-luwuk-monitoring` **hanya untuk dibaca** (read-only). Tidak ada perubahan pada repo existing.
 
-> Status: **PLAN ONLY**
-> JANGAN coding sebelum plan ini di-approve.
-> JANGAN commit/push/deploy/ubah project existing.
+> Status: **IMPLEMENTED & DEPLOYED (2026-08-17)**
+> Plan ini telah diimplementasi penuh, di-commit (`314dcf0`, branch `develop`), di-push ke GitHub, dan di-deploy ke VPS production (`/opt/wawweb`, port 3006).
+> Detail hasil nyata & deployment: lihat `docs/documentation.md`.
+> Sisa belum dilakukan: integrasi subscriber PLTD (webhook), Phase 3-5 migration plan.
 
 ---
 
@@ -392,11 +393,11 @@ QR berasal dari event whatsapp-web.js (via `qrcode.toDataURL`) — tidak membuat
 
 Project existing PLTD **TIDAK diubah** pada tahap ini.
 
-1. **PHASE 1** — WA Service standalone: client, QR/connect, sync grup, send/receive.
-2. **PHASE 2** — Uji webhook + recovery dengan dummy subscriber.
-3. **PHASE 3** — Dokumentasi API provider remote untuk PLTD (tanpa ubah PLTD).
-4. **PHASE 4** — PLTD menyiapkan `WHATSAPP_PROVIDER=local|remote` (di repo PLTD sendiri, di luar lingkup ini).
-5. **PHASE 5** — Setelah stabil, evaluasi pengurangan dependency WhatsApp lokal.
+1. **PHASE 1** — WA Service standalone: client, QR/connect, sync grup, send/receive. ✅ **SELESAI + DEPLOYED** (VPS, 2026-08-17)
+2. **PHASE 2** — Uji webhook + recovery dengan dummy subscriber. ✅ **SEBAGIAN** — recovery & send/receive teruji di VPS (lihat `docs/documentation.md` §10); webhook ke receiver nyata belum (belum ada subscriber).
+3. **PHASE 3** — Dokumentasi API provider remote untuk PLTD (tanpa ubah PLTD). ⏳ Belum.
+4. **PHASE 4** — PLTD menyiapkan `WHATSAPP_PROVIDER=local|remote` (di repo PLTD sendiri, di luar lingkup ini). ⏳ Belum.
+5. **PHASE 5** — Setelah stabil, evaluasi pengurangan dependency WhatsApp lokal. ⏳ Belum.
 
 ---
 

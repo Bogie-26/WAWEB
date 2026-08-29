@@ -1,8 +1,8 @@
 # WA Service — Progress Documentation
 
-Status terakhir: **Phase 5B (Event Recovery Runtime Test) dibatalkan sementara setelah inisialisasi WSL environment, database seeding, dan perbaikan penanganan ADMIN_PASSWORD_HASH di berkas .env lokal.**
+Status terakhir: **Deployment production VPS berhasil (2026-08-17). WA Service berjalan di VPS pada port 3006, WhatsApp CONNECTED dengan session tersimpan di Docker volume, seluruh verifikasi runtime PASS.**
 
-Dokumen ini mencatat hal-hal yang **benar-benar dibuat dan terbukti ada di dalam code** serta temuan runtime dari inisiasi Phase 5B.
+Dokumen ini mencatat hal-hal yang **benar-benar dibuat dan terbukti ada di dalam code** serta temuan runtime dari pengembangan dan deployment.
 
 ---
 
@@ -11,11 +11,12 @@ Dokumen ini mencatat hal-hal yang **benar-benar dibuat dan terbukti ada di dalam
 Project **WA Service** dibangun di folder `WAWEB/` — layanan WhatsApp terpusat berbasis `whatsapp-web.js` untuk banyak aplikasi client.
 
 - Project existing `rownewgit/pln-luwuk-monitoring` **tidak pernah diubah** (read-only, hanya dijadikan referensi untuk pola whatsapp-web.js).
-- Tidak ada `commit`, `push`, `merge`, `deploy`, atau SSH yang dilakukan.
-- Koneksi WhatsApp (QR_READY) sempat berjalan di WSL, namun Phase 5B ditangguhkan sebelum proses pairing diselesaikan secara menyeluruh karena kendala WhatsApp authentication.
-- Berkas penunjang pengetesan ditambahkan secara lokal dalam folder `scripts/` (check-db, check-status, save-qr, update-webhook, seed-test) tanpa menyentuh source code utama.
+- Commit pertama (`314dcf0 feat: initial wa service implementation`, branch `develop`) telah dibuat dan di-push ke `https://github.com/Bogie-26/WAWEB.git`.
+- Deployment production dilakukan di VPS `187.127.98.175` (SSH port 22022, user root) di `/opt/wawweb` pada commit `314dcf0`.
+- Aplikasi existing di VPS (pln_luwuk_web :3005, pohon3-app :3000, smart_expense_* :3001/:5003, cx100luwuk_monitor :5002) **tidak disentuh**.
+- Berkas penunjang pengetesan ditambahkan secara lokal dalam folder `scripts/` (check-db, check-status, save-qr, update-webhook, seed-test) tanpa menyentuh source code utama — **tidak di-commit**.
 
-Sumber keputusan: `baca.txt` (requirement) → `docs/implementation_plan.md` (plan yang di-approve dengan 2 adjustment) → implementasi Phase 1 → Inisiasi Phase 5B (Runtime Test).
+Sumber keputusan: `baca.txt` (requirement) → `docs/implementation_plan.md` (plan yang di-approve dengan 2 adjustment) → implementasi Phase 1 → Runtime Test → Commit & Push → Deployment VPS.
 
 ## 2. Fakta verifikasi lingkungan (saat pekerjaan dijalankan)
 
@@ -32,7 +33,7 @@ Sumber keputusan: `baca.txt` (requirement) → `docs/implementation_plan.md` (pl
 
 ```
 WAWEB/
-├── .env.example                (template env — file .env TIDAK dibuat)
+├── .env.example                (template env — .env dibuat langsung di VPS, TIDAK di-commit)
 ├── .gitignore
 ├── baca.txt                    (requirement asli)
 ├── Dockerfile
@@ -73,6 +74,7 @@ WAWEB/
 │       ├── groups.ts                    (GET /api/groups)
 │       ├── applications.ts              (/api/applications CRUD + rotate + test-webhook)
 │       ├── subscriptions.ts             (/api/subscriptions CRUD)
+│       ├── client.ts                    (/api/client/* — status, groups, subscriptions utk aplikasi subscriber, requireApplication)
 │       ├── messages.ts                  (POST /api/messages/send-group, /api/messages/send)
 │       ├── internal.ts                  (GET /internal/events, /internal/events/ack, /internal/subscriptions)
 │       └── settings.ts                  (GET /api/settings)
@@ -103,7 +105,7 @@ WAWEB/
 
 ## 4. Database (fakta dari `prisma/schema.prisma` + migration.sql)
 
-6 model, DDL di `prisma/migrations/0001_init/migration.sql` (dihasilkan `prisma migrate diff --from-empty` — belum pernah dijalankan terhadap database nyata):
+6 model, DDL di `prisma/migrations/0001_init/migration.sql` (dihasilkan `prisma migrate diff --from-empty`; **telah dijalankan nyata di VPS via `prisma migrate deploy` pada 2026-08-17**):
 
 | Model | Kolom kunci |
 |---|---|
@@ -145,7 +147,7 @@ Semua pola berikut ada di `src/whatsapp/*` dan merupakan port dari `src/lib/what
 | Group pre-population 15 detik setelah `ready` | `client.ts` | |
 | `client.pupPage.on('console')` error logging | `client.ts` | |
 
-**Penting (fakta):** login WhatsApp/QR **belum pernah diuji** — tidak ada runtime yang dijalankan. `client.ts` dibuat mengikuti pola reference yang sudah terbukti, tetapi konektivitasnya belum diverifikasi di project ini.
+**Penting (fakta):** login WhatsApp/QR **belum pernah diuji** di lingkungan lokal/Windows, namun **terbukti berhasil di VPS production** (2026-08-17): `DISCONNECTED → CONNECTING → QR_READY → CONNECTED` via scan QR manual oleh user; session tersimpan di volume `wa_session` (`/app/.wwebjs_auth`).
 
 ## 7. Workshop delivery & recovery — fakta di code
 
@@ -174,6 +176,10 @@ Prefix `requireAdmin` (JWT Bearer) untuk semua `/api/*` kecuali `/api/auth/login
 | POST `/api/applications/:id/test-webhook` | applications.ts | POST payload `{event:'test'}` |
 | DELETE `/api/applications/:id` | applications.ts | cascade subscriptions |
 | GET/POST/DELETE `/api/subscriptions` + PATCH `/:id` | subscriptions.ts | validasi `@g.us` + aplikasi ada |
+| GET `/api/client/status` | client.ts | requireApplication — status ringkas utk aplikasi (db + whatsapp) |
+| GET `/api/client/groups` | client.ts | requireApplication — daftar grup dikenal `[{id, name}]` |
+| GET `/api/client/subscriptions` | client.ts | requireApplication — subscription milik aplikasi pemanggil |
+| PUT `/api/client/subscriptions` | client.ts | requireApplication — sync subscription (upsert + disable yg tak ada) |
 | POST `/api/messages/send-group` | messages.ts | requireApplication + wajib subscribe grup tsb (403 bila tidak), rate limit 20/menit |
 | POST `/api/messages/send` | messages.ts | requireAdmin |
 | GET `/api/settings` | settings.ts | public settings + uptime + stored status |
@@ -194,11 +200,55 @@ Prefix `requireAdmin` (JWT Bearer) untuk semua `/api/*` kecuali `/api/auth/login
 | `npm run build` (backend → `dist/`) | ✅ `dist/index.js` ada |
 | `npm run web:build` (vite → `web/dist/`) | ✅ `index.html` + assets (js 183.19 kB, gzip 58.11 kB) |
 | `docker compose config` (dengan env test) | ✅ OK — services: `wa-service-db`, `wa-service-web` |
-| `docker compose build` | ❌ GAGAL — Docker daemon tidak berjalan (`npipe:////./pipe/dockerDesktopLinuxEngine`) |
+| `docker compose build` | ❌ GAGAL — Docker daemon tidak berjalan (`npipe:////./pipe/dockerDesktopLinuxEngine`) — **hanya di mesin lokal**; berhasil di VPS |
 | `git init -b develop` | ✅ branch `develop` |
 | `git add -A` + `git status` | ✅ 54 file staged, **0 commit** (`git log` → fatal: tidak ada commit) |
+| Commit + push (2026-08-17) | ✅ `314dcf0 feat: initial wa service implementation` di-push ke `origin/develop` |
 
-## 10. Temuan Runtime & Aktivitas Phase 5B
+## 10. Deployment VPS (production, 2026-08-17)
+
+### Target
+- VPS: `187.127.98.175` (SSH port `22022`, user `root`, hostname `srv1753618`)
+- Direktori deploy: `/opt/wawweb` (git clone, **detached HEAD** di commit `314dcf0`)
+- Repo: `https://github.com/Bogie-26/WAWEB.git` — branch `develop`
+
+### Docker (terisolasi dari aplikasi lain)
+| Item | Nilai |
+|---|---|
+| Project name | `wa-service` |
+| Containers | `wa_service_db` (PostgreSQL 15, internal, tanpa host port) · `wa_service_web` (port `3006:3006`) |
+| Volumes | `wa-service_wa_db_data` (DB) · `wa-service_wa_session` (`/app/.wwebjs_auth` — session WhatsApp) |
+| Image | `wa-service-wa-service-web:latest` (multi-stage, Chromium `/usr/bin/chromium`) |
+| Restart | `unless-stopped` |
+
+### Environment (`.env` di `/opt/wawweb`, tidak di-commit)
+- `PORT=3006`, `DATABASE_URL=postgresql://wa_service:<pw>@wa-service-db:5432/wa_service?schema=public`
+- `ADMIN_USERNAME=admin` + `ADMIN_PASSWORD_HASH` (bcrypt)
+- `JWT_SECRET` (acak), `WEBHOOK_ALLOW_PRIVATE_IP=false` (SSRF blokir aktif), `EVENT_RETENTION_HOURS=72`
+- **Temuan penting**: `ADMIN_PASSWORD_HASH` di `.env` **harus memakai `$$` (double dollar)** karena docker compose menginterpolasi nilai `.env`; `$` tunggal membuat hash rusak (variabel `KMOEZ...` dianggap tidak diset). Kebalikan dari temuan WSL (Section 11) — di sana `$$` literal mematahkan bcrypt karena dijalankan langsung via `--env-file`.
+- **Temuan penting**: host DB di `DATABASE_URL` harus `wa-service-db` (nama service compose), bukan `db` seperti contoh `.env.example` — `db` menyebabkan `P1001 Can't reach database server`.
+
+### Status runtime
+- WhatsApp: `CONNECTED` (scan QR manual oleh user di Admin Web, 2026-08-17 09:04 UTC)
+- Group sync: **142 grup** tersync (IndexedDB fallback aktif), 0 invalid JID, 0 duplikat
+- Session persistence: restart `wa_service_web` → langsung `CONNECTED` tanpa QR baru
+- HTTP: `GET /api/health` → `{"status":"ok","db":true,"whatsapp":"QR_READY"}` (sebelum pairing) / `CONNECTED` (setelah)
+- Login admin: `admin` / password yang dikonfigurasi — bcrypt verified
+
+### Test pipeline (grup test: `Monitoring Laporan Logsheet UP3 Luwuk` — `120363428720515605@g.us`)
+- **Outgoing**: `POST /api/messages/send-group` `WA_SERVICE_VPS_TEST_001` → `{"ok":true}`; grup non-subscribe → **403** ✅
+- **Incoming**: pesan `WA_SERVICE_VPS_TEST_001/002` dari grup subscribe → `MessageEvent` (seq) → `EventDelivery` (status `FAILED`, `webhook_url tidak dikonfigurasi` — wajar, webhook belum dipasang) ✅
+- **Recovery**: `GET /internal/events?after=0` → hanya event grup subscribe (filter berjalan), `POST /internal/events/ack {"after":"34"}` → `{"ok":true}`, `ApplicationCursor.lastSeq=34` ✅
+
+### Aplikasi test
+- `VPS Test Client` (id `32b27a9b-7d57-4ed5-8c29-147e0071dd96`) — **test only**, bukan PLTD. Token ditampilkan sekali saat create; dapat di-rotate via Admin Web.
+- Subscription hanya ke grup logsheet di atas.
+
+### Resource (steady-state)
+- Load average: 0.55 · RAM available: 2.6Gi
+- `wa_service_web`: 1.94% CPU / ~598 MiB · `wa_service_db`: 0% / ~55 MiB
+
+## 11. Temuan Runtime & Aktivitas Phase 5B (lokal/WSL)
 
 Selama inisiasi runtime test Phase 5B, beberapa temuan dan penyesuaian lingkungan telah diverifikasi:
 
@@ -208,13 +258,16 @@ Selama inisiasi runtime test Phase 5B, beberapa temuan dan penyesuaian lingkunga
 * **WhatsApp QR & Session Lifecycle**: Puppeteer meluncurkan browser Chrome dengan sukses. Status WhatsApp client berganti dari `DISCONNECTED` → `CONNECTING` → `QR_READY` di database. Berkas lock Chromium (`SingletonLock` dkk) dibersihkan secara otomatis.
 * **Rate Limiter & Sesi**: Percobaan login berturut-turut memicu rate limiter in-memory (Map `buckets`). Masalah "Too many requests" atau "Sesi berakhir" berhasil diatasi dengan me-restart Express server untuk meriset map tersebut di memory.
 
-## 11. Hal yang TIDAK dilakukan (batas lingkup)
+## 12. Hal yang TIDAK dilakukan (batas lingkup)
 
-- Tidak commit/push/merge/deploy.
+- Tidak commit/push/merge untuk repo lain; hanya commit `314dcf0` + push `origin/develop` untuk WAWEB.
 - Tidak mengubah satu pun file di `rownewgit/pln-luwuk-monitoring` dan `rownewgit/pohon3`.
-- Tidak ada source code utama (di dalam `src/` atau `web/`) yang dimodifikasi.
-- Pengujian event recovery dibatalkan sebelum WhatsApp client berhasil ditautkan secara penuh (pairing ditangguhkan atas permintaan user).
+- Aplikasi existing di VPS (`pln_luwuk_web`, `pohon3-app`, `smart_expense_*`, `cx100luwuk_monitor`) **tidak disentuh/restart**.
+- Tidak deploy PLTD; tidak menghubungkan webhook PLTD; tidak membuat Application PLTD.
+- Tidak force push, tidak menyentuh `main`, tidak mengubah reverse proxy/firewall/sshd VPS.
+- Webhook delivery belum diuji dengan receiver nyata (belum ada subscriber PLTD) — hanya sampai `EventDelivery`.
+- Pengujian event recovery di WSL dibatalkan sebelum WhatsApp client berhasil ditautkan penuh; **di VPS recovery sudah teruji**.
 
 ---
 
-*Dokumen ini ditulis dari fakta code & hasil command yang benar-benar dijalankan. Jika ada bagian yang ingin diverifikasi ulang, jalankan check di Section 9.*
+*Dokumen ini ditulis dari fakta code & hasil command yang benar-benar dijalankan. Jika ada bagian yang ingin diverifikasi ulang, jalankan check di Section 9 atau akses Admin Web VPS (`http://187.127.98.175:3006`).*

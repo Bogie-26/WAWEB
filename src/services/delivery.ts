@@ -16,7 +16,7 @@ async function attemptDelivery(
   deliveryId: string,
   eventId: string,
   application: { tokenHash: string; webhookUrl: string | null; id: string; name: string },
-  event: { seq: bigint; groupJid: string; groupName: string; senderId: string; senderName: string | null; body: string | null; timestamp: Date }
+  event: { seq: bigint; groupJid: string; groupName: string; senderId: string; senderName: string | null; body: string | null; hasMedia: boolean | null; timestamp: Date }
 ): Promise<void> {
   if (!application.webhookUrl) {
     await prisma.eventDelivery.update({
@@ -50,6 +50,7 @@ async function attemptDelivery(
     senderName: event.senderName || '',
     timestamp: Math.floor(event.timestamp.getTime() / 1000),
     body: event.body || '',
+    hasMedia: event.hasMedia,
   };
   const rawBody = JSON.stringify(payload);
 
@@ -119,6 +120,7 @@ export async function triggerDelivery(event: {
   senderId: string;
   senderName: string | null;
   body: string | null;
+  hasMedia: boolean | null;
   timestamp: Date;
 }): Promise<void> {
   const deliveries = await prisma.eventDelivery.findMany({

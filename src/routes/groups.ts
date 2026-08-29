@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { prisma } from '../lib/db.js';
 import { requireAdmin, asyncHandler } from '../lib/auth.js';
+import { getClientInstance, getBotState } from '../whatsapp/client.js';
+import { syncGroupsFromClient } from '../whatsapp/groups.js';
 
 export const groupsRouter = Router();
 groupsRouter.use(requireAdmin);
@@ -28,5 +30,19 @@ groupsRouter.get(
         subscriptionCount: countByJid[g.jid] ?? 0,
       }))
     );
+  })
+);
+
+// Refresh daftar grup dari client (group discovery manual)
+groupsRouter.post(
+  '/refresh',
+  asyncHandler(async (_req, res) => {
+    const client = getClientInstance();
+    if (!client || getBotState().status !== 'CONNECTED') {
+      res.status(409).json({ error: 'WhatsApp belum terhubung' });
+      return;
+    }
+    const groups = await syncGroupsFromClient(client);
+    res.json({ synced: groups.length });
   })
 );

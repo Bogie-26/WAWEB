@@ -1,0 +1,64 @@
+Saya ingin menyiapkan dan push perubahan terbaru WAWEB ke Git repository.
+
+Fokus HANYA repository WAWEB.
+
+Langkah:
+
+1. Cek status repository:
+
+git status
+
+2. Cek branch aktif:
+
+git branch --show-current
+
+3. Tampilkan perubahan yang akan di-commit:
+
+git diff --stat
+git diff
+
+Review perubahan tersebut dan pastikan hanya perubahan WAWEB yang berkaitan dengan:
+- penyimpanan WhatsApp messageId asli
+- webhook hasMedia
+- endpoint download media:
+  GET /api/client/messages/:messageId/media
+- perubahan lain yang memang sudah saya kerjakan untuk centralized WhatsApp service.
+
+Jangan mengubah kode yang tidak diperlukan.
+
+4. Pastikan tidak ada secret/token production yang ikut ter-commit.
+Khususnya:
+- WA_SERVICE_TOKEN
+- password
+- API key
+- credential
+- .env production
+
+Jika ada secret yang akan masuk commit, BERHENTI dan beri tahu saya.
+
+5. Jika semuanya aman, commit perubahan dengan message:
+
+feat: add centralized WhatsApp media support
+
+6. Setelah commit berhasil, push ke remote branch yang sedang digunakan:
+
+git push
+
+7. Setelah selesai, tampilkan:
+
+- commit hash terbaru
+- commit message
+- branch
+- remote repository
+- hasil git push
+- `git status`
+
+JANGAN melakukan:
+- force push
+- git reset --hard
+- git clean
+- menghapus file yang tidak terkait
+- mengubah repository Pohon3
+- deployment ke VPS
+
+Jika ada konflik, perubahan lokal yang belum di-commit, atau masalah Git, BERHENTI dan tampilkan masalahnya. Jangan menyelesaikannya secara destruktif.

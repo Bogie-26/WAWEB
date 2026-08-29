@@ -6,9 +6,7 @@ import {
   initWhatsapp,
   restartWhatsapp,
   stopWhatsapp,
-  getClientInstance,
 } from '../whatsapp/client.js';
-import { syncGroupsFromClient } from '../whatsapp/groups.js';
 import { getPublicSettings, getStoredConfig, getUptimeSeconds, startedAt } from '../services/settings.js';
 
 export const statusRouter = Router();
@@ -68,20 +66,6 @@ statusRouter.get(
       whatsapp: bot.status,
       uptimeSeconds: getUptimeSeconds(),
     });
-  })
-);
-
-// Refresh daftar grup dari client (group discovery manual)
-statusRouter.post(
-  '/groups/refresh',
-  asyncHandler(async (_req, res) => {
-    const client = getClientInstance();
-    if (!client || getBotState().status !== 'CONNECTED') {
-      res.status(409).json({ error: 'WhatsApp belum terhubung' });
-      return;
-    }
-    const groups = await syncGroupsFromClient(client);
-    res.json({ synced: groups.length });
   })
 );
 

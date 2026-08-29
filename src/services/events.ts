@@ -1,5 +1,8 @@
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { prisma } from '../lib/db.js';
-import { getClientInstance } from '../whatsapp/client.js';
+import { getClientInstance, downloadMediaCustom } from '../whatsapp/client.js';
 import { resolveGroupNameFromChat } from '../whatsapp/groups.js';
 import { triggerDelivery } from './delivery.js';
 
@@ -48,6 +51,7 @@ export async function handleIncomingMessage(msg: any): Promise<void> {
     // 2. Persist event (seq = global high-water mark)
     const event = await prisma.messageEvent.create({
       data: {
+        id: msg.id._serialized || msg.id.$1 || crypto.randomUUID(),
         groupJid: chatJid,
         groupName,
         senderId,
@@ -58,6 +62,44 @@ export async function handleIncomingMessage(msg: any): Promise<void> {
       },
     });
     console.log(`[WA-RECV] event=${event.id} group=${groupName} len=${body.length}`);
+
+    // Pre-cache media immediately during incoming message handling
+    if (msg.hasMedia) {
+      try {
+        console.log(`[WA-MEDIA] Pre-downloading media for incoming event=${event.id}`);
+        const client = getClientInstance();
+        let media = null;
+        if (client) {
+          for (let attempt = 1; attempt <= 5; attempt++) {
+            try {
+              media = await downloadMediaCustom(client, event.id);
+              if (media) break;
+            } catch (e: any) {
+              if (attempt === 5) throw e;
+            }
+            console.log(`[WA-MEDIA] Media not ready for event=${event.id}, retrying in 2s (Attempt ${attempt}/5)...`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
+        if (media) {
+          const cacheDir = '/app/media-cache';
+          if (!fs.existsSync(cacheDir)) {
+            fs.mkdirSync(cacheDir, { recursive: true });
+          }
+          const cachePath = path.join(cacheDir, `${event.id}.json`);
+          fs.writeFileSync(cachePath, JSON.stringify({
+            mimetype: media.mimetype,
+            data: media.data,
+            filename: media.filename || null
+          }));
+          console.log(`[WA-MEDIA] Pre-download media success for event=${event.id}`);
+        } else {
+          console.warn(`[WA-MEDIA] Pre-download media returned null for event=${event.id}`);
+        }
+      } catch (err: any) {
+        console.error(`[WA-MEDIA] Pre-download media failed for event=${event.id}:`, err.message);
+      }
+    }
 
     // 3. Cari subscription aktif untuk grup ini
     const subs = await prisma.subscription.findMany({
