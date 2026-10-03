@@ -77,10 +77,12 @@ export async function listClientGroups(client: any): Promise<GroupInfo[]> {
   });
 }
 
-/** Upsert daftar grup dari client ke database lokal. */
+/** Upsert & clean/purge daftar grup dari client ke database lokal. */
 export async function syncGroupsFromClient(client: any): Promise<GroupInfo[]> {
   const groups = await listClientGroups(client);
+  const activeJids = groups.map((g) => g.jid);
   let updated = 0;
+
   for (const g of groups) {
     const result = await prisma.whatsappGroup.upsert({
       where: { jid: g.jid },
@@ -89,6 +91,21 @@ export async function syncGroupsFromClient(client: any): Promise<GroupInfo[]> {
     });
     if (result.name === g.name) updated++;
   }
+
+  // Clean/purge: Hapus grup lama dari database yang sudah tidak aktif/ditemukan di client WhatsApp
+  if (activeJids.length > 0) {
+    const deleted = await prisma.whatsappGroup.deleteMany({
+      where: {
+        jid: {
+          notIn: activeJids,
+        },
+      },
+    });
+    if (deleted.count > 0) {
+      console.log(`[WA-SYNC] Purged ${deleted.count} stale groups from database.`);
+    }
+  }
+
   console.log(`[WA-SYNC] Retrieved ${groups.length} groups via client API. Upserted ${updated}.`);
   return groups;
 }

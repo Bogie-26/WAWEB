@@ -42,7 +42,7 @@ export default function WhatsAppPage() {
     setBusy(true);
     setNotice('');
     try {
-      const r = await api<{ status: string }>('/api/status/whatsapp/reconnect', { method: 'POST' });
+      const r = await api<{ status: string }>('/api/whatsapp/reconnect', { method: 'POST' });
       setNotice(`Reconnect dipicu (${r.status}).`);
       setTimeout(load, 3000);
     } catch (e: any) {
