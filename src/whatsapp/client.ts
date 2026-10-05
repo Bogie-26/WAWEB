@@ -312,6 +312,23 @@ export async function downloadMediaCustom(client: any, messageId: string): Promi
     }
 
     try {
+      let rawMimetype = msg.mimetype || msg.mediaData?.mimetype || null;
+      let effectiveMimetype = rawMimetype;
+
+      if (!effectiveMimetype || effectiveMimetype === 'application/octet-stream') {
+        if (msg.type === 'image') {
+          effectiveMimetype = 'image/jpeg';
+          console.log(`[WA-MEDIA-EVAL] Normalizing MIME ${rawMimetype || 'empty'} -> image/jpeg for image message ${msgId}`);
+        }
+      }
+
+      if (effectiveMimetype) {
+        msg.mimetype = effectiveMimetype;
+        if (msg.mediaData) {
+          msg.mediaData.mimetype = effectiveMimetype;
+        }
+      }
+
       const mockQpl = {
         addAnnotations: function () { return this; },
         addPoint: function () { return this; },
@@ -325,6 +342,7 @@ export async function downloadMediaCustom(client: any, messageId: string): Promi
           mediaKey: msg.mediaKey,
           mediaKeyTimestamp: msg.mediaKeyTimestamp,
           type: msg.type,
+          mimetype: effectiveMimetype,
           signal: new AbortController().signal,
           downloadQpl: mockQpl,
         });
@@ -335,10 +353,9 @@ export async function downloadMediaCustom(client: any, messageId: string): Promi
       }
 
       const data = await (window as any).WWebJS.arrayBufferToBase64Async(decryptedMedia);
-      const mimetype = msg.mimetype || msg.mediaData?.mimetype || null;
       return {
         data,
-        mimetype,
+        mimetype: effectiveMimetype,
         filename: msg.filename || null,
       };
     } catch (e: any) {
