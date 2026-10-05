@@ -48,6 +48,17 @@ export async function handleIncomingMessage(msg: any): Promise<void> {
       console.log(`[WA-DISCOVERY] New group JID discovered: ${chatJid} -> "${groupName}"`);
     }
 
+    const hasMedia = Boolean(
+      msg.hasMedia ||
+      msg.type === 'image' ||
+      msg.type === 'video' ||
+      msg.type === 'sticker' ||
+      msg.type === 'document' ||
+      msg.type === 'audio' ||
+      msg._data?.directPath ||
+      msg._data?.mimetype
+    );
+
     // 2. Persist event (seq = global high-water mark)
     const event = await prisma.messageEvent.create({
       data: {
@@ -57,16 +68,17 @@ export async function handleIncomingMessage(msg: any): Promise<void> {
         senderId,
         senderName,
         body,
-        hasMedia: !!msg.hasMedia,
+        hasMedia,
         timestamp,
       },
     });
-    console.log(`[WA-RECV] event=${event.id} group=${groupName} len=${body.length}`);
+    console.log(`[WA-RECV] event=${event.id} group=${groupName} type=${msg.type} hasMedia=${hasMedia} len=${body.length}`);
 
     // Pre-cache media immediately during incoming message handling
-    if (msg.hasMedia) {
+    if (hasMedia) {
+      const startTime = Date.now();
       try {
-        console.log(`[WA-MEDIA] Pre-downloading media for incoming event=${event.id}`);
+        console.log(`[WA-MEDIA] Pre-downloading media (type=${msg.type}) for incoming event=${event.id}`);
         const client = getClientInstance();
         let media = null;
         if (client) {
@@ -81,6 +93,7 @@ export async function handleIncomingMessage(msg: any): Promise<void> {
             await new Promise(resolve => setTimeout(resolve, 2000));
           }
         }
+        const durationMs = Date.now() - startTime;
         if (media) {
           const cacheDir = '/app/media-cache';
           if (!fs.existsSync(cacheDir)) {
@@ -92,9 +105,9 @@ export async function handleIncomingMessage(msg: any): Promise<void> {
             data: media.data,
             filename: media.filename || null
           }));
-          console.log(`[WA-MEDIA] Pre-download media success for event=${event.id}`);
+          console.log(`[WA-MEDIA] Pre-download media success for event=${event.id} (${media.mimetype}) in ${durationMs}ms`);
         } else {
-          console.warn(`[WA-MEDIA] Pre-download media returned null for event=${event.id}`);
+          console.warn(`[WA-MEDIA] Pre-download media returned null for event=${event.id} after ${durationMs}ms`);
         }
       } catch (err: any) {
         console.error(`[WA-MEDIA] Pre-download media failed for event=${event.id}:`, err.message);

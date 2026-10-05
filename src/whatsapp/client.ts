@@ -234,16 +234,29 @@ export async function downloadMediaCustom(client: any, messageId: string): Promi
   const uniqueId = parts[2] || messageId;
 
   return await client.pupPage.evaluate(async (msgId: string, uniqId: string) => {
-    // 1. Try to find in model cache by unique ID
-    let msg = (window as any).require('WAWebCollections').Msg.getModelsArray().find(
-      (m: any) => m.id && (m.id.id === uniqId || m.id._serialized === msgId)
-    );
+    // 1. Try to get it by ID
+    let msg: any = null;
+    try {
+      msg = (window as any).require('WAWebCollections').Msg.get(msgId);
+    } catch (e: any) {
+      console.warn(`[WA-MEDIA-EVAL] Msg.get lookup failed for ${msgId}: ${e?.message || e}`);
+    }
 
-    // 2. Try to get it by ID
+    // 2. Try to find in model cache by unique ID or serialized match
     if (!msg) {
       try {
-        msg = (window as any).require('WAWebCollections').Msg.get(msgId);
-      } catch (e) {}
+        const models = (window as any).require('WAWebCollections').Msg.getModelsArray();
+        msg = models.find(
+          (m: any) =>
+            m.id &&
+            (m.id._serialized === msgId ||
+              m.id.id === msgId ||
+              m.id.id === uniqId ||
+              (typeof m.id._serialized === 'string' && m.id._serialized.includes(uniqId)))
+        );
+      } catch (e: any) {
+        console.warn(`[WA-MEDIA-EVAL] Msg.getModelsArray lookup failed for ${msgId}: ${e?.message || e}`);
+      }
     }
 
     // 3. Try to get from database/server (with try-catch to prevent DataError crash)
@@ -253,23 +266,48 @@ export async function downloadMediaCustom(client: any, messageId: string): Promi
         if (res && res.messages && res.messages.length) {
           msg = res.messages[0];
         }
-      } catch (e) {}
+      } catch (e: any) {
+        console.warn(`[WA-MEDIA-EVAL] Msg.getMessagesById lookup failed for ${msgId}: ${e?.message || e}`);
+      }
     }
 
     if (!msg || !msg.mediaData) {
+      console.warn(`[WA-MEDIA-EVAL] Message ${msgId} not found or no mediaData`);
       return null;
     }
 
+    // Trigger download if media stage is not yet RESOLVED
     if (msg.mediaData.mediaStage !== 'RESOLVED' && msg.mediaData.mediaStage !== 'REUPLOADING') {
       try {
         await msg.downloadMedia({
           downloadEvenIfExpensive: true,
           rmrReason: 1,
         });
-      } catch (e) {}
+      } catch (e: any) {
+        console.warn(`[WA-MEDIA-EVAL] msg.downloadMedia trigger exception: ${e?.message || e}`);
+      }
     }
 
-    if (msg.mediaData.mediaStage.includes('ERROR') || msg.mediaData.mediaStage === 'FETCHING') {
+    // Poll until mediaStage transitions from FETCHING to RESOLVED (max wait 12s)
+    const maxWaitMs = 12000;
+    const pollIntervalMs = 250;
+    let elapsedMs = 0;
+    while (
+      msg.mediaData.mediaStage !== 'RESOLVED' &&
+      !msg.mediaData.mediaStage.includes('ERROR') &&
+      elapsedMs < maxWaitMs
+    ) {
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+      elapsedMs += pollIntervalMs;
+    }
+
+    if (msg.mediaData.mediaStage.includes('ERROR')) {
+      console.warn(`[WA-MEDIA-EVAL] Media stage reported ERROR (${msg.mediaData.mediaStage}) for ${msgId}`);
+      return null;
+    }
+
+    if (msg.mediaData.mediaStage !== 'RESOLVED' && msg.mediaData.mediaStage !== 'REUPLOADING') {
+      console.warn(`[WA-MEDIA-EVAL] Timeout waiting for RESOLVED stage. Final mediaStage=${msg.mediaData.mediaStage} for ${msgId}`);
       return null;
     }
 
@@ -291,13 +329,20 @@ export async function downloadMediaCustom(client: any, messageId: string): Promi
           downloadQpl: mockQpl,
         });
 
+      if (!decryptedMedia) {
+        console.warn(`[WA-MEDIA-EVAL] downloadAndMaybeDecrypt returned empty result for ${msgId}`);
+        return null;
+      }
+
       const data = await (window as any).WWebJS.arrayBufferToBase64Async(decryptedMedia);
+      const mimetype = msg.mimetype || msg.mediaData?.mimetype || null;
       return {
         data,
-        mimetype: msg.mimetype,
+        mimetype,
         filename: msg.filename || null,
       };
-    } catch (e) {
+    } catch (e: any) {
+      console.error(`[WA-MEDIA-EVAL] Decryption error for ${msgId}: ${e?.message || e}`);
       return null;
     }
   }, messageId, uniqueId);
